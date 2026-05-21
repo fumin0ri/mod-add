@@ -1,0 +1,27 @@
+{
+  "seed": 0,
+  "modulus": 113,
+  "train_fraction": 0.3,
+  "d_model": 128,
+  "n_heads": 4,
+  "d_mlp": 512,
+  "n_layers": 1,
+  "learning_rate": 0.001,
+  "weight_decay": 1.0,
+  "epochs": 40000,
+  "log_every": 100,
+  "checkpoint_every": 1000,
+  "out_dir": "runs/circuit_sparse_mainline",
+  "device": "auto",
+  "causal": true,
+  "weight_keep_fraction": 0.25,
+  "initial_weight_keep_fraction": 1.0,
+  "anneal_weight_sparsity": true,
+  "anneal_start_frac": 0.01,
+  "anneal_stop_frac": 0.5,
+  "schedule_lr_with_l0": true,
+  "include_bias_in_weight_sparsity": true,
+  "activation_keep_fraction": 0.25,
+  "activation_sparsity_locations": "attn_in,attn_q,attn_k,attn_v,attn_out,mlp_in,mlp_neuron,mlp_out,resid_post_attn,resid_post_mlp"
+}
+

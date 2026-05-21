@@ -50,6 +50,34 @@ Analyze Fourier structure in embeddings:
 python -m grokking_repro.fourier runs/mainline/checkpoints/final.pt --out runs/mainline/fourier_embedding.csv
 ```
 
+## Circuit-sparsity style run
+
+This keeps the Nanda et al. modular-addition architecture and task, but trains with a lightweight adaptation of the `openai/circuit_sparsity` training idea:
+
+- after each optimizer step, keep only the largest-magnitude weights and zero the rest;
+- optionally anneal the weight keep fraction from dense to sparse;
+- keep only the largest-magnitude activations at selected transformer locations.
+
+Quick smoke test:
+
+```bash
+python -m grokking_repro.train_sparse --epochs 20 --out-dir runs/sparse_smoke
+```
+
+Paper-length sparse run:
+
+```bash
+python -m grokking_repro.train_sparse --config configs/circuit_sparse_mainline.json
+```
+
+Plot:
+
+```bash
+python -m grokking_repro.plot runs/circuit_sparse_mainline/metrics.csv --out runs/circuit_sparse_mainline/curves.png
+```
+
+The default sparse config uses `weight_keep_fraction = 0.25` and `activation_keep_fraction = 0.25`. These are intentionally conservative for the small modular-addition model; lower values are more interpretable but may prevent grokking.
+
 ## Git + SSH workflow
 
 On this PC:
