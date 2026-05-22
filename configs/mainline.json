@@ -12,6 +12,6 @@
   "log_every": 100,
   "checkpoint_every": 1000,
   "out_dir": "runs/mainline",
-  "device": "auto"
+  "device": "cuda"
 }
 

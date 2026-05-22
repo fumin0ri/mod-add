@@ -40,6 +40,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Create curves.png for each seed after training.",
     )
+    parser.add_argument(
+        "--fourier",
+        action="store_true",
+        help="Run Fourier embedding analysis for each seed after training.",
+    )
     return parser.parse_args()
 
 
@@ -90,7 +95,18 @@ def main() -> None:
             print("plotting:", " ".join(plot_cmd), flush=True)
             subprocess.run(plot_cmd, check=True)
 
+        if args.fourier:
+            fourier_cmd = [
+                sys.executable,
+                "-m",
+                "grokking_repro.fourier",
+                str(out_dir / "checkpoints" / "final.pt"),
+                "--out",
+                str(out_dir / "fourier_embedding.csv"),
+            ]
+            print("fourier:", " ".join(fourier_cmd), flush=True)
+            subprocess.run(fourier_cmd, check=True)
+
 
 if __name__ == "__main__":
     main()
-

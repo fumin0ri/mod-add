@@ -12,7 +12,7 @@
   "log_every": 100,
   "checkpoint_every": 1000,
   "out_dir": "runs/circuit_sparse_mainline",
-  "device": "auto",
+  "device": "cuda",
   "causal": true,
   "weight_keep_fraction": 0.25,
   "initial_weight_keep_fraction": 1.0,

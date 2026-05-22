@@ -72,7 +72,13 @@ def parse_args() -> TrainConfig:
 def resolve_device(name: str) -> torch.device:
     if name == "auto":
         return torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    return torch.device(name)
+    device = torch.device(name)
+    if device.type == "cuda" and not torch.cuda.is_available():
+        raise RuntimeError(
+            "CUDA was requested, but torch.cuda.is_available() is False. "
+            "Check that the server has a visible GPU and a CUDA-enabled PyTorch build."
+        )
+    return device
 
 
 def set_seed(seed: int) -> None:
@@ -115,6 +121,9 @@ def main() -> None:
     cfg = parse_args()
     set_seed(cfg.seed)
     device = resolve_device(cfg.device)
+    print(f"device={device}", flush=True)
+    if device.type == "cuda":
+        print(f"cuda_device={torch.cuda.get_device_name(device)}", flush=True)
     out_dir = Path(cfg.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "checkpoints").mkdir(exist_ok=True)
@@ -201,4 +210,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
