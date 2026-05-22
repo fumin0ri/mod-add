@@ -96,16 +96,31 @@ def main() -> None:
             subprocess.run(plot_cmd, check=True)
 
         if args.fourier:
+            fourier_csv = out_dir / "fourier_embedding.csv"
             fourier_cmd = [
                 sys.executable,
                 "-m",
                 "grokking_repro.fourier",
                 str(out_dir / "checkpoints" / "final.pt"),
                 "--out",
-                str(out_dir / "fourier_embedding.csv"),
+                str(fourier_csv),
             ]
             print("fourier:", " ".join(fourier_cmd), flush=True)
             subprocess.run(fourier_cmd, check=True)
+
+            if args.plot:
+                fourier_plot_cmd = [
+                    sys.executable,
+                    "-m",
+                    "grokking_repro.plot",
+                    str(fourier_csv),
+                    "--kind",
+                    "fourier",
+                    "--out",
+                    str(out_dir / "fourier_embedding.png"),
+                ]
+                print("plotting fourier:", " ".join(fourier_plot_cmd), flush=True)
+                subprocess.run(fourier_plot_cmd, check=True)
 
 
 if __name__ == "__main__":

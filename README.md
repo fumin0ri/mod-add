@@ -48,6 +48,7 @@ Analyze Fourier structure in embeddings:
 
 ```bash
 python -m grokking_repro.fourier runs/mainline/checkpoints/final.pt --out runs/mainline/fourier_embedding.csv
+python -m grokking_repro.plot runs/mainline/fourier_embedding.csv --kind fourier --out runs/mainline/fourier_embedding.png
 ```
 
 ## Circuit-sparsity style run
