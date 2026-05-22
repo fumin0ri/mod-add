@@ -14,7 +14,7 @@ from torch.nn import functional as F
 
 from .data import make_modular_addition_data
 from .model import ModularAdditionTransformer
-from .sparsity import apply_decoupled_weight_decay_, apply_weight_topk_, linear_schedule
+from .sparsity import apply_weight_topk_, linear_schedule
 from .train import evaluate, resolve_device, save_checkpoint
 
 
@@ -135,7 +135,11 @@ def main() -> None:
         activation_keep_fraction=cfg.activation_keep_fraction,
         activation_sparsity_locations=cfg.activation_sparsity_locations,
     ).to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=cfg.learning_rate)
+    optimizer = torch.optim.AdamW(
+        model.parameters(),
+        lr=cfg.learning_rate,
+        weight_decay=cfg.weight_decay,
+    )
 
     initial_stats = apply_weight_topk_(
         model,
@@ -209,7 +213,6 @@ def main() -> None:
             scaled_lr = cfg.learning_rate
 
         optimizer.step()
-        apply_decoupled_weight_decay_(model, lr=scaled_lr, weight_decay=cfg.weight_decay)
         last_stats = apply_weight_topk_(
             model,
             keep_fraction,
@@ -221,4 +224,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
