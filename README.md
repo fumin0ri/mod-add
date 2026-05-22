@@ -78,6 +78,36 @@ python -m grokking_repro.plot runs/circuit_sparse_mainline/metrics.csv --out run
 
 The default sparse config uses `weight_keep_fraction = 0.25` and `activation_keep_fraction = 0.25`. These are intentionally conservative for the small modular-addition model; lower values are more interpretable but may prevent grokking.
 
+## Multiple seeds
+
+Sparse runs over several seeds:
+
+```bash
+python -m grokking_repro.sweep \
+  --mode sparse \
+  --config configs/circuit_sparse_mainline.json \
+  --seeds 0 1 2 3 4 \
+  --out-root runs/circuit_sparse_seeds \
+  --plot
+```
+
+Dense baseline over several seeds:
+
+```bash
+python -m grokking_repro.sweep \
+  --mode dense \
+  --config configs/mainline.json \
+  --seeds 0 1 2 3 4 \
+  --out-root runs/dense_seeds \
+  --plot
+```
+
+For a quick multi-seed smoke test:
+
+```bash
+python -m grokking_repro.sweep --mode sparse --seeds 0 1 --epochs 20 --out-root runs/sparse_seed_smoke --plot
+```
+
 ## Git + SSH workflow
 
 On this PC:
