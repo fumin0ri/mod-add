@@ -55,12 +55,12 @@ python -m grokking_repro.plot runs/mainline/fourier_embedding.csv --kind fourier
 
 This keeps the modular-addition task, but uses the weight-sparse transformer settings from Gao et al. 2025:
 
-- GPT-2 style decoder-only transformer with RMSNorm, GELU MLPs, untied embedding/unembedding, and no positional embeddings;
+- GPT-2 style decoder-only transformer with RMSNorm, GELU MLPs, untied embedding/unembedding, no positional embeddings, and no dense bigram table for the modular-addition task;
 - `n_layers = 8`, `d_model = 2048`, `d_head = 16`, `n_heads = 128`, `d_mlp = 8192`;
 - AdamW with `beta1 = 0.9`, `beta2 = 0.95`, `weight_decay = 0.1`, `eps = 0.1`;
 - linearly anneal weight L0 from dense to the target over the first 50% of training;
 - target weight keep fraction `1/64`, corresponding to the paper's `pfrac = 1/4` and expansion factor 4 setup;
-- AbsTopK activation sparsity with `activation_keep_fraction = 0.25`.
+- AbsTopK activation sparsity with `activation_keep_fraction = 0.25` on attention/MLP reads, writes, q/k/v, and MLP post-activation. The residual stream itself is not directly top-k sparsified.
 
 Quick smoke test:
 

@@ -22,7 +22,7 @@
   "rms_norm": true,
   "use_pos_embed": false,
   "attention_sink": false,
-  "bigram_table": true,
+  "bigram_table": false,
   "weight_keep_fraction": 0.015625,
   "initial_weight_keep_fraction": 1.0,
   "anneal_weight_sparsity": true,
@@ -32,7 +32,7 @@
   "include_bias_in_weight_sparsity": true,
   "minimum_alive_per_row": 4,
   "activation_keep_fraction": 0.25,
-  "activation_sparsity_locations": "attn_in,attn_q,attn_k,attn_v,attn_out,mlp_in,mlp_neuron,mlp_out,resid_post_attn,resid_post_mlp",
+  "activation_sparsity_locations": "attn_in,attn_q,attn_k,attn_v,attn_out,mlp_in,mlp_neuron,mlp_out",
   "lr_warmup_frac": 0.01,
   "lr_decay": true,
   "grad_clip_rms": 1.0

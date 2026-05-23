@@ -43,7 +43,7 @@ class SparseTrainConfig:
     rms_norm: bool = True
     use_pos_embed: bool = False
     attention_sink: bool = False
-    bigram_table: bool = True
+    bigram_table: bool = False
 
     # Weight-sparse transformer controls from Gao et al. 2025.
     weight_keep_fraction: float | None = 1 / 64
@@ -56,8 +56,7 @@ class SparseTrainConfig:
     minimum_alive_per_row: int = 4
     activation_keep_fraction: float | None = 0.25
     activation_sparsity_locations: str = (
-        "attn_in,attn_q,attn_k,attn_v,attn_out,"
-        "mlp_in,mlp_neuron,mlp_out,resid_post_attn,resid_post_mlp"
+        "attn_in,attn_q,attn_k,attn_v,attn_out,mlp_in,mlp_neuron,mlp_out"
     )
     lr_warmup_frac: float = 0.01
     lr_decay: bool = True
