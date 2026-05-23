@@ -36,9 +36,17 @@ def main() -> None:
         modulus=cfg["modulus"],
         d_model=cfg["d_model"],
         n_heads=cfg["n_heads"],
+        d_head=cfg.get("d_head"),
         d_mlp=cfg["d_mlp"],
         n_layers=cfg["n_layers"],
         causal=cfg.get("causal", True),
+        activation_type=cfg.get("activation_type", "relu"),
+        activation_keep_fraction=cfg.get("activation_keep_fraction"),
+        activation_sparsity_locations=cfg.get("activation_sparsity_locations", ""),
+        rms_norm=cfg.get("rms_norm", False),
+        use_pos_embed=cfg.get("use_pos_embed", True),
+        attention_sink=cfg.get("attention_sink", False),
+        bigram_table=cfg.get("bigram_table", False),
     )
     model.load_state_dict(checkpoint["model"])
     model.eval()

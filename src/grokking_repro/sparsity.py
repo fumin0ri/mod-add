@@ -41,6 +41,7 @@ def apply_weight_topk_(
     keep_fraction: float | None,
     *,
     include_bias: bool = True,
+    minimum_alive_per_row: int = 0,
 ) -> WeightSparsityStats:
     if keep_fraction is None or keep_fraction >= 1.0:
         total = sum(p.numel() for _, p in sparsifiable_parameters(model, include_bias=include_bias))
@@ -58,7 +59,18 @@ def apply_weight_topk_(
         if k >= flat.numel():
             alive += flat.numel()
             continue
-        _, indices = torch.topk(flat.abs(), k, sorted=False)
+        scores = flat.abs()
+        if param.ndim == 2 and minimum_alive_per_row > 0:
+            per_row_k = min(minimum_alive_per_row, param.shape[1])
+            min_alive_total = per_row_k * param.shape[0]
+            if min_alive_total <= k:
+                row_scores = param.data.abs()
+                _, row_indices = torch.topk(row_scores, per_row_k, dim=1, sorted=False)
+                row_offsets = torch.arange(param.shape[0], device=param.device).unsqueeze(1) * param.shape[1]
+                protected = (row_indices + row_offsets).flatten()
+                scores = scores.clone()
+                scores[protected] = torch.inf
+        _, indices = torch.topk(scores, k, sorted=False)
         mask = torch.zeros_like(flat, dtype=torch.bool)
         mask.index_fill_(0, indices, True)
         flat.masked_fill_(~mask, 0.0)
@@ -77,9 +89,13 @@ def sparsifiable_parameters(
             continue
         if name.endswith("pos_embed"):
             continue
+        if name.endswith("bigram_table"):
+            continue
+        if "ln_" in name:
+            continue
         if not include_bias and name.endswith(".bias"):
             continue
-        if param.ndim == 0:
+        if param.ndim < 2 and not name.endswith(".bias"):
             continue
         params.append((name, param))
     return params
@@ -96,4 +112,3 @@ def apply_decoupled_weight_decay_(
     for _, param in sparsifiable_parameters(model, include_bias=False):
         if param.ndim > 1:
             param.data.add_(param.data, alpha=-weight_decay * lr)
-

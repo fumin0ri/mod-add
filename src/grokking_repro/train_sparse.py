@@ -23,32 +23,45 @@ class SparseTrainConfig:
     seed: int = 0
     modulus: int = 113
     train_fraction: float = 0.3
-    d_model: int = 128
-    n_heads: int = 4
-    d_mlp: int = 512
-    n_layers: int = 1
+    d_model: int = 2048
+    n_heads: int = 128
+    d_head: int | None = 16
+    d_mlp: int = 8192
+    n_layers: int = 8
     learning_rate: float = 1e-3
-    weight_decay: float = 1.0
+    weight_decay: float = 0.1
+    adam_beta1: float = 0.9
+    adam_beta2: float = 0.95
+    adam_eps: float = 0.1
     epochs: int = 40000
     log_every: int = 100
     checkpoint_every: int = 1000
     out_dir: str = "runs/circuit_sparse_mainline"
     device: str = "auto"
     causal: bool = True
+    activation_type: str = "gelu"
+    rms_norm: bool = True
+    use_pos_embed: bool = False
+    attention_sink: bool = False
+    bigram_table: bool = True
 
-    # Circuit-sparsity style controls.
-    weight_keep_fraction: float | None = 0.25
+    # Weight-sparse transformer controls from Gao et al. 2025.
+    weight_keep_fraction: float | None = 1 / 64
     initial_weight_keep_fraction: float = 1.0
     anneal_weight_sparsity: bool = True
-    anneal_start_frac: float = 0.01
+    anneal_start_frac: float = 0.0
     anneal_stop_frac: float = 0.5
     schedule_lr_with_l0: bool = True
     include_bias_in_weight_sparsity: bool = True
+    minimum_alive_per_row: int = 4
     activation_keep_fraction: float | None = 0.25
     activation_sparsity_locations: str = (
         "attn_in,attn_q,attn_k,attn_v,attn_out,"
         "mlp_in,mlp_neuron,mlp_out,resid_post_attn,resid_post_mlp"
     )
+    lr_warmup_frac: float = 0.01
+    lr_decay: bool = True
+    grad_clip_rms: float | None = 1.0
 
 
 def load_config(path: str | None) -> SparseTrainConfig:
@@ -108,6 +121,36 @@ def current_keep_fraction(cfg: SparseTrainConfig, epoch: int) -> float | None:
     )
 
 
+def scheduled_lr(cfg: SparseTrainConfig, epoch: int, keep_fraction: float | None) -> float:
+    warmup_steps = int(cfg.lr_warmup_frac * cfg.epochs)
+    if warmup_steps > 0 and epoch < warmup_steps:
+        lr = cfg.learning_rate * epoch / warmup_steps
+    elif cfg.lr_decay:
+        decay_steps = max(1, cfg.epochs - warmup_steps)
+        lr = cfg.learning_rate * max(0.0, 1.0 - (epoch - warmup_steps) / decay_steps)
+    else:
+        lr = cfg.learning_rate
+
+    if cfg.schedule_lr_with_l0 and keep_fraction is not None and keep_fraction > 0:
+        lr *= (cfg.weight_keep_fraction / keep_fraction) ** 0.5
+    return lr
+
+
+def clip_grad_rms_(parameters: list[torch.nn.Parameter], max_rms: float | None) -> None:
+    if max_rms is None:
+        return
+    grads = [p.grad for p in parameters if p.grad is not None]
+    if not grads:
+        return
+    total_sq = sum(g.detach().pow(2).sum() for g in grads)
+    total_n = sum(g.numel() for g in grads)
+    grad_rms = torch.sqrt(total_sq / max(1, total_n))
+    if grad_rms > max_rms:
+        scale = max_rms / (grad_rms + 1e-12)
+        for grad in grads:
+            grad.mul_(scale)
+
+
 def main() -> None:
     cfg = parse_args()
     set_seed(cfg.seed)
@@ -129,22 +172,32 @@ def main() -> None:
         modulus=cfg.modulus,
         d_model=cfg.d_model,
         n_heads=cfg.n_heads,
+        d_head=cfg.d_head,
         d_mlp=cfg.d_mlp,
         n_layers=cfg.n_layers,
         causal=cfg.causal,
+        activation_type=cfg.activation_type,
         activation_keep_fraction=cfg.activation_keep_fraction,
         activation_sparsity_locations=cfg.activation_sparsity_locations,
+        rms_norm=cfg.rms_norm,
+        use_pos_embed=cfg.use_pos_embed,
+        attention_sink=cfg.attention_sink,
+        bigram_table=cfg.bigram_table,
     ).to(device)
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=cfg.learning_rate,
         weight_decay=cfg.weight_decay,
+        betas=(cfg.adam_beta1, cfg.adam_beta2),
+        eps=cfg.adam_eps,
     )
+    all_params = [p for p in model.parameters() if p.requires_grad]
 
     initial_stats = apply_weight_topk_(
         model,
         current_keep_fraction(cfg, 0),
         include_bias=cfg.include_bias_in_weight_sparsity,
+        minimum_alive_per_row=cfg.minimum_alive_per_row,
     )
 
     metrics_path = out_dir / "metrics.csv"
@@ -155,6 +208,7 @@ def main() -> None:
         "test_loss",
         "test_acc",
         "weight_norm",
+        "learning_rate",
         "weight_keep_fraction",
         "weight_alive_fraction",
         "seconds",
@@ -178,6 +232,7 @@ def main() -> None:
                 "test_loss": test_loss,
                 "test_acc": test_acc,
                 "weight_norm": weight_norm,
+                "learning_rate": scheduled_lr(cfg, epoch, keep_fraction),
                 "weight_keep_fraction": keep_fraction if keep_fraction is not None else 1.0,
                 "weight_alive_fraction": last_stats.alive_fraction,
                 "seconds": perf_counter() - start,
@@ -205,18 +260,17 @@ def main() -> None:
         loss = F.cross_entropy(logits, data.train_labels)
         loss.backward()
 
-        if cfg.schedule_lr_with_l0 and keep_fraction is not None and keep_fraction > 0:
-            scaled_lr = cfg.learning_rate * (cfg.weight_keep_fraction / keep_fraction) ** 0.5
-            for group in optimizer.param_groups:
-                group["lr"] = scaled_lr
-        else:
-            scaled_lr = cfg.learning_rate
+        this_lr = scheduled_lr(cfg, epoch, keep_fraction)
+        for group in optimizer.param_groups:
+            group["lr"] = this_lr
 
+        clip_grad_rms_(all_params, cfg.grad_clip_rms)
         optimizer.step()
         last_stats = apply_weight_topk_(
             model,
             keep_fraction,
             include_bias=cfg.include_bias_in_weight_sparsity,
+            minimum_alive_per_row=cfg.minimum_alive_per_row,
         )
 
     save_checkpoint(out_dir / "checkpoints" / "final.pt", model, optimizer, cfg, cfg.epochs)

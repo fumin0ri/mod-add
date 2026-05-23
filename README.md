@@ -53,11 +53,14 @@ python -m grokking_repro.plot runs/mainline/fourier_embedding.csv --kind fourier
 
 ## Circuit-sparsity style run
 
-This keeps the Nanda et al. modular-addition architecture and task, but trains with a lightweight adaptation of the `openai/circuit_sparsity` training idea:
+This keeps the modular-addition task, but uses the weight-sparse transformer settings from Gao et al. 2025:
 
-- after each optimizer step, keep only the largest-magnitude weights and zero the rest;
-- optionally anneal the weight keep fraction from dense to sparse;
-- keep only the largest-magnitude activations at selected transformer locations.
+- GPT-2 style decoder-only transformer with RMSNorm, GELU MLPs, untied embedding/unembedding, and no positional embeddings;
+- `n_layers = 8`, `d_model = 2048`, `d_head = 16`, `n_heads = 128`, `d_mlp = 8192`;
+- AdamW with `beta1 = 0.9`, `beta2 = 0.95`, `weight_decay = 0.1`, `eps = 0.1`;
+- linearly anneal weight L0 from dense to the target over the first 50% of training;
+- target weight keep fraction `1/64`, corresponding to the paper's `pfrac = 1/4` and expansion factor 4 setup;
+- AbsTopK activation sparsity with `activation_keep_fraction = 0.25`.
 
 Quick smoke test:
 
@@ -77,7 +80,7 @@ Plot:
 python -m grokking_repro.plot runs/circuit_sparse_mainline/metrics.csv --out runs/circuit_sparse_mainline/curves.png
 ```
 
-The default sparse config uses `weight_keep_fraction = 0.25` and `activation_keep_fraction = 0.25`. These are intentionally conservative for the small modular-addition model; lower values are more interpretable but may prevent grokking.
+This is a large model for the tiny modular-addition task. It is intentionally set this way to match the paper's sparse-training regime; use a GPU and expect dense AdamW moments to consume several GB of memory.
 
 ## Multiple seeds
 
