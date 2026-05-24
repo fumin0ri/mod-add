@@ -114,6 +114,24 @@ For a quick multi-seed smoke test:
 python -m grokking_repro.sweep --mode sparse --seeds 0 1 --epochs 20 --out-root runs/sparse_seed_smoke --plot --fourier
 ```
 
+Grid sweep over seeds and hyperparameters:
+
+```bash
+python -m grokking_repro.sweep \
+  --mode sparse \
+  --config configs/circuit_sparse_mainline.json \
+  --seeds 0 1 2 \
+  --d-models 512 1024 2048 \
+  --learning-rates 0.0003 0.001 \
+  --weight-keep-fractions 0.015625 0.03125 \
+  --out-root runs/sparse_grid \
+  --device cuda \
+  --plot \
+  --fourier
+```
+
+When `--d-models` is used, the sweep runner updates `d_mlp = 4 * d_model` and, when `d_head` is set, `n_heads = d_model / d_head`. Add `--no-auto-architecture` to disable this behavior.
+
 ## Git + SSH workflow
 
 On this PC:
