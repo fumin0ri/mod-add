@@ -51,6 +51,16 @@ python -m grokking_repro.fourier runs/mainline/checkpoints/final.pt --out runs/m
 python -m grokking_repro.plot runs/mainline/fourier_embedding.csv --kind fourier --out runs/mainline/fourier_embedding.png
 ```
 
+Visualize trained weights and biases:
+
+```bash
+python -m grokking_repro.visualize_weights \
+  runs/circuit_sparse_mainline/checkpoints/final.pt \
+  --out-dir runs/circuit_sparse_mainline/weight_heatmaps
+```
+
+For very large matrices, the heatmap is downsampled for display. A `summary.csv` with shape, nonzero count, and basic statistics is saved alongside the PNG files.
+
 ## Circuit-sparsity style run
 
 This keeps the modular-addition task, but uses the weight-sparse transformer settings from Gao et al. 2025:
