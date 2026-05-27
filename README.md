@@ -59,7 +59,7 @@ python -m grokking_repro.visualize_weights \
   --out-dir runs/circuit_sparse_mainline/weight_heatmaps
 ```
 
-For very large matrices, the heatmap is downsampled for display. A `summary.csv` with shape, nonzero count, and basic statistics is saved alongside the PNG files.
+The heatmap shows the nonzero mask directly: zero entries are white and nonzero entries are black. A `summary.csv` with shape, nonzero count, and basic statistics is saved alongside the PNG files.
 
 ## Circuit-sparsity style run
 
