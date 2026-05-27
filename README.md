@@ -61,6 +61,20 @@ python -m grokking_repro.visualize_weights \
 
 The heatmap shows the nonzero mask directly: zero entries are white and nonzero entries are black. A `summary.csv` with shape, nonzero count, and basic statistics is saved alongside the PNG files.
 
+Mean-ablation pruning:
+
+```bash
+python -m grokking_repro.prune \
+  runs/circuit_sparse_mainline/checkpoints/final.pt \
+  --out-dir runs/circuit_sparse_mainline/pruning \
+  --device cuda \
+  --steps 2000 \
+  --batch-size 256 \
+  --k-coef 0.001
+```
+
+This freezes the trained model, estimates the mean activation at each node location, then learns binary node masks with a straight-through estimator. Masked-out nodes are replaced by their mean activation rather than zero. The learned masks are saved to `prune_masks.pt`, with optimization metrics in `metrics.csv`.
+
 ## Circuit-sparsity style run
 
 This keeps the modular-addition task, but uses the weight-sparse transformer settings from Gao et al. 2025:

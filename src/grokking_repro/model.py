@@ -22,11 +22,17 @@ class ActivationSparsifier:
     def __init__(self, keep_fraction: float | None = None, locations: str = "") -> None:
         self.keep_fraction = keep_fraction
         self.locations = {loc.strip() for loc in locations.split(",") if loc.strip()}
+        self.capture = None
+        self.mean_ablation = None
 
     def __call__(self, x: torch.Tensor, location: str) -> torch.Tensor:
-        if location not in self.locations:
-            return x
-        return keep_abs_topk(x, self.keep_fraction)
+        if location in self.locations:
+            x = keep_abs_topk(x, self.keep_fraction)
+        if self.capture is not None:
+            self.capture(location, x)
+        if self.mean_ablation is not None:
+            x = self.mean_ablation(location, x)
+        return x
 
 
 class MultiHeadSelfAttention(nn.Module):
@@ -177,6 +183,7 @@ class ModularAdditionTransformer(nn.Module):
             keep_fraction=activation_keep_fraction,
             locations=activation_sparsity_locations,
         )
+        self.activation_sparsifier = activation_sparsifier
 
         self.token_embed = nn.Embedding(self.vocab_size, d_model)
         if use_pos_embed:
