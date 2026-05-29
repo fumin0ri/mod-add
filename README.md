@@ -75,6 +75,16 @@ python -m grokking_repro.prune \
 
 This freezes the trained model, estimates the mean activation at each node location, then learns binary node masks with a straight-through estimator. Masked-out nodes are replaced by their mean activation rather than zero. The learned masks are saved to `prune_masks.pt`, with optimization metrics in `metrics.csv`.
 
+Visualize the pruned circuit:
+
+```bash
+python -m grokking_repro.visualize_circuit \
+  runs/circuit_sparse_mainline/pruning/prune_masks.pt \
+  --out-dir runs/circuit_sparse_mainline/pruning/circuit_viz
+```
+
+Open `circuit_viz/index.html` and follow the per-layer attention/MLP links. Blue edges are positive weights and red edges are negative weights; opacity indicates relative magnitude among displayed edges.
+
 ## Circuit-sparsity style run
 
 This keeps the modular-addition task, but uses the weight-sparse transformer settings from Gao et al. 2025:

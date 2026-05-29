@@ -26,7 +26,8 @@ class ActivationSparsifier:
         self.mean_ablation = None
 
     def __call__(self, x: torch.Tensor, location: str) -> torch.Tensor:
-        if location in self.locations:
+        base_location = location.split(".")[-1]
+        if location in self.locations or base_location in self.locations:
             x = keep_abs_topk(x, self.keep_fraction)
         if self.capture is not None:
             self.capture(location, x)
@@ -44,6 +45,7 @@ class MultiHeadSelfAttention(nn.Module):
         causal: bool = True,
         activation_sparsifier: ActivationSparsifier | None = None,
         attention_sink: bool = False,
+        location_prefix: str = "",
     ) -> None:
         super().__init__()
         if d_head is None and d_model % n_heads != 0:
@@ -52,6 +54,7 @@ class MultiHeadSelfAttention(nn.Module):
         self.d_head = d_head if d_head is not None else d_model // n_heads
         self.causal = causal
         self.attention_sink = attention_sink
+        self.location_prefix = location_prefix
         self.activation_sparsifier = activation_sparsifier or ActivationSparsifier()
         attn_dim = n_heads * self.d_head
         self.W_Q = nn.Linear(d_model, attn_dim, bias=True)
@@ -61,13 +64,16 @@ class MultiHeadSelfAttention(nn.Module):
         if attention_sink:
             self.sink_logit = nn.Parameter(torch.zeros(n_heads))
 
+    def loc(self, name: str) -> str:
+        return f"{self.location_prefix}.{name}" if self.location_prefix else name
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         batch, seq_len, _ = x.shape
         attn_dim = self.n_heads * self.d_head
-        x = self.activation_sparsifier(x, "attn_in")
-        q = self.activation_sparsifier(self.W_Q(x), "attn_q")
-        k = self.activation_sparsifier(self.W_K(x), "attn_k")
-        v = self.activation_sparsifier(self.W_V(x), "attn_v")
+        x = self.activation_sparsifier(x, self.loc("attn_in"))
+        q = self.activation_sparsifier(self.W_Q(x), self.loc("attn_q"))
+        k = self.activation_sparsifier(self.W_K(x), self.loc("attn_k"))
+        v = self.activation_sparsifier(self.W_V(x), self.loc("attn_v"))
         q = q.view(batch, seq_len, self.n_heads, self.d_head).transpose(1, 2)
         k = k.view(batch, seq_len, self.n_heads, self.d_head).transpose(1, 2)
         v = v.view(batch, seq_len, self.n_heads, self.d_head).transpose(1, 2)
@@ -85,7 +91,7 @@ class MultiHeadSelfAttention(nn.Module):
         out = attn @ v
         out = out.transpose(1, 2).contiguous().view(batch, seq_len, attn_dim)
         out = self.W_O(out)
-        return self.activation_sparsifier(out, "attn_out")
+        return self.activation_sparsifier(out, self.loc("attn_out"))
 
 
 class SparseAwareMLP(nn.Module):
@@ -95,22 +101,27 @@ class SparseAwareMLP(nn.Module):
         d_mlp: int,
         activation_type: str = "relu",
         activation_sparsifier: ActivationSparsifier | None = None,
+        location_prefix: str = "",
     ) -> None:
         super().__init__()
         self.activation_sparsifier = activation_sparsifier or ActivationSparsifier()
+        self.location_prefix = location_prefix
         self.fc_in = nn.Linear(d_model, d_mlp)
         self.fc_out = nn.Linear(d_mlp, d_model)
         if activation_type not in {"relu", "gelu"}:
             raise ValueError("activation_type must be 'relu' or 'gelu'.")
         self.activation_type = activation_type
 
+    def loc(self, name: str) -> str:
+        return f"{self.location_prefix}.{name}" if self.location_prefix else name
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.activation_sparsifier(x, "mlp_in")
+        x = self.activation_sparsifier(x, self.loc("mlp_in"))
         x = self.fc_in(x)
         x = F.relu(x) if self.activation_type == "relu" else F.gelu(x)
-        x = self.activation_sparsifier(x, "mlp_neuron")
+        x = self.activation_sparsifier(x, self.loc("mlp_neuron"))
         x = self.fc_out(x)
-        return self.activation_sparsifier(x, "mlp_out")
+        return self.activation_sparsifier(x, self.loc("mlp_out"))
 
 
 class TransformerBlock(nn.Module):
@@ -125,10 +136,12 @@ class TransformerBlock(nn.Module):
         activation_sparsifier: ActivationSparsifier | None = None,
         rms_norm: bool = False,
         attention_sink: bool = False,
+        layer_index: int | None = None,
     ) -> None:
         super().__init__()
         self.activation_sparsifier = activation_sparsifier or ActivationSparsifier()
         self.rms_norm = rms_norm
+        self.layer_prefix = f"blocks.{layer_index}" if layer_index is not None else ""
         self.ln_1 = nn.RMSNorm(d_model) if rms_norm else nn.Identity()
         self.ln_2 = nn.RMSNorm(d_model) if rms_norm else nn.Identity()
         self.attn = MultiHeadSelfAttention(
@@ -138,19 +151,21 @@ class TransformerBlock(nn.Module):
             causal=causal,
             activation_sparsifier=self.activation_sparsifier,
             attention_sink=attention_sink,
+            location_prefix=self.layer_prefix,
         )
         self.mlp = SparseAwareMLP(
             d_model=d_model,
             d_mlp=d_mlp,
             activation_type=activation_type,
             activation_sparsifier=self.activation_sparsifier,
+            location_prefix=self.layer_prefix,
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = x + self.attn(self.ln_1(x))
-        x = self.activation_sparsifier(x, "resid_post_attn")
+        x = self.activation_sparsifier(x, f"{self.layer_prefix}.resid_post_attn" if self.layer_prefix else "resid_post_attn")
         x = x + self.mlp(self.ln_2(x))
-        x = self.activation_sparsifier(x, "resid_post_mlp")
+        x = self.activation_sparsifier(x, f"{self.layer_prefix}.resid_post_mlp" if self.layer_prefix else "resid_post_mlp")
         return x
 
 
@@ -202,8 +217,9 @@ class ModularAdditionTransformer(nn.Module):
                     activation_sparsifier=activation_sparsifier,
                     rms_norm=rms_norm,
                     attention_sink=attention_sink,
+                    layer_index=layer_index,
                 )
-                for _ in range(n_layers)
+                for layer_index in range(n_layers)
             ]
         )
         self.unembed = nn.Linear(d_model, modulus, bias=False)
