@@ -69,6 +69,11 @@ def load_config(path: str | None) -> SparseTrainConfig:
         return cfg
     with open(path, "r", encoding="utf-8") as f:
         values = json.load(f)
+    return config_from_dict(values)
+
+
+def config_from_dict(values: dict) -> SparseTrainConfig:
+    cfg = SparseTrainConfig()
     for key, value in values.items():
         if not hasattr(cfg, key):
             raise ValueError(f"Unknown config key: {key}")
@@ -76,25 +81,48 @@ def load_config(path: str | None) -> SparseTrainConfig:
     return cfg
 
 
-def parse_args() -> SparseTrainConfig:
+def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", type=str, default=None)
     parser.add_argument("--epochs", type=int, default=None)
+    parser.add_argument("--additional-epochs", type=int, default=None)
     parser.add_argument("--out-dir", type=str, default=None)
     parser.add_argument("--device", type=str, default=None)
     parser.add_argument("--seed", type=int, default=None)
-    args = parser.parse_args()
+    parser.add_argument("--resume", type=str, default=None)
+    return parser.parse_args()
 
-    cfg = load_config(args.config)
-    if args.epochs is not None:
-        cfg.epochs = args.epochs
+
+def config_from_args(args: argparse.Namespace) -> tuple[SparseTrainConfig, dict | None, int]:
+    if args.epochs is not None and args.additional_epochs is not None:
+        raise ValueError("Use only one of --epochs or --additional-epochs.")
+    checkpoint = None
+    start_epoch = 0
+    if args.resume is not None:
+        checkpoint = torch.load(args.resume, map_location="cpu")
+        cfg = config_from_dict(checkpoint["config"])
+        start_epoch = int(checkpoint.get("epoch", 0))
+        if args.additional_epochs is not None:
+            cfg.epochs = start_epoch + args.additional_epochs
+        elif args.epochs is not None:
+            cfg.epochs = args.epochs
+        else:
+            raise ValueError("When using --resume, pass --additional-epochs or --epochs.")
+        if cfg.epochs < start_epoch:
+            raise ValueError(f"Target epochs {cfg.epochs} is before checkpoint epoch {start_epoch}.")
+    else:
+        if args.additional_epochs is not None:
+            raise ValueError("--additional-epochs requires --resume.")
+        cfg = load_config(args.config)
+        if args.epochs is not None:
+            cfg.epochs = args.epochs
     if args.out_dir is not None:
         cfg.out_dir = args.out_dir
     if args.device is not None:
         cfg.device = args.device
     if args.seed is not None:
         cfg.seed = args.seed
-    return cfg
+    return cfg, checkpoint, start_epoch
 
 
 def set_seed(seed: int) -> None:
@@ -151,9 +179,13 @@ def clip_grad_rms_(parameters: list[torch.nn.Parameter], max_rms: float | None) 
 
 
 def main() -> None:
-    cfg = parse_args()
+    args = parse_args()
+    cfg, checkpoint, start_epoch = config_from_args(args)
     set_seed(cfg.seed)
     device = resolve_device(cfg.device)
+    print(f"device={device}", flush=True)
+    if device.type == "cuda":
+        print(f"cuda_device={torch.cuda.get_device_name(device)}", flush=True)
     out_dir = Path(cfg.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "checkpoints").mkdir(exist_ok=True)
@@ -190,6 +222,10 @@ def main() -> None:
         betas=(cfg.adam_beta1, cfg.adam_beta2),
         eps=cfg.adam_eps,
     )
+    if checkpoint is not None:
+        model.load_state_dict(checkpoint["model"])
+        optimizer.load_state_dict(checkpoint["optimizer"])
+        print(f"resumed_from={args.resume} start_epoch={start_epoch} target_epoch={cfg.epochs}", flush=True)
     all_params = [p for p in model.parameters() if p.requires_grad]
 
     initial_stats = apply_weight_topk_(
@@ -212,15 +248,18 @@ def main() -> None:
         "weight_alive_fraction",
         "seconds",
     ]
-    with open(metrics_path, "w", newline="", encoding="utf-8") as f:
+    write_header = checkpoint is None or not metrics_path.exists()
+    with open(metrics_path, "a", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
+        if write_header:
+            writer.writeheader()
 
     start = perf_counter()
     last_stats = initial_stats
-    for epoch in range(cfg.epochs + 1):
+    for epoch in range(start_epoch, cfg.epochs + 1):
         keep_fraction = current_keep_fraction(cfg, epoch)
-        if epoch % cfg.log_every == 0 or epoch == cfg.epochs:
+        should_log = epoch % cfg.log_every == 0 or epoch == cfg.epochs
+        if should_log and (checkpoint is None or epoch != start_epoch):
             train_loss, train_acc = evaluate(model, data.train_tokens, data.train_labels)
             test_loss, test_acc = evaluate(model, data.test_tokens, data.test_labels)
             weight_norm = sum(p.detach().pow(2).sum().item() for p in model.parameters())

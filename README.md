@@ -38,6 +38,14 @@ Paper-like run:
 python -m grokking_repro.train --config configs/mainline.json
 ```
 
+Continue a trained dense run for more epochs:
+
+```bash
+python -m grokking_repro.train \
+  --resume runs/mainline/checkpoints/final.pt \
+  --additional-epochs 10000
+```
+
 Plot training curves:
 
 ```bash
@@ -106,6 +114,14 @@ Paper-length sparse run:
 
 ```bash
 python -m grokking_repro.train_sparse --config configs/circuit_sparse_mainline.json
+```
+
+Continue a trained sparse run for more epochs:
+
+```bash
+python -m grokking_repro.train_sparse \
+  --resume runs/circuit_sparse_mainline/checkpoints/final.pt \
+  --additional-epochs 10000
 ```
 
 Plot:
